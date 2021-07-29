@@ -22,6 +22,9 @@
 
 module Main (main) where
 
+import Control.Monad (join)
+import Control.Monad.IO.Class (MonadIO(liftIO))
+import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (replicateConcurrently)
 import Data.ByteString (ByteString)
 import Data.Int (Int32)
@@ -33,6 +36,7 @@ import qualified Generics.SOP as SOP
 import qualified GHC.Generics as GHC
 
 import Squeal.PostgreSQL
+import qualified Squeal.PostgreSQL.Session.Transaction.Unsafe as Unsafe
 
 main :: IO ()
 main = hspec spec
@@ -130,12 +134,17 @@ spec = before_ setupDB . after_ dropDB $ do
       pool <- createConnectionPool
         "host=localhost port=5432 dbname=exampledb user=postgres password=postgres" 1 0.5 10
       let
-        qry :: Query_ (Public '[]) () (Only Char)
-        qry = values_ (inline 'a' `as` #fromOnly)
-        session = usingConnectionPool pool $ transactionally_ $
-          firstRow =<< runQuery qry
-      chrs <- replicateConcurrently 10 session
-      chrs `shouldSatisfy` all (== Just (Only 'a'))
+        qry :: Statement (Public '[]) (Only Char) (Only Char)
+        qry = query $ values_ (param @1 `as` #fromOnly)
+        session = usingConnectionPool pool $ Unsafe.transactionally_ $ do
+          results1 <- executePrepared qry (replicate 50 (Only 'a'))
+          liftIO $ threadDelay 1000000
+          results2 <- executePrepared qry (replicate 50 (Only 'a'))
+          chrss <- traverse getRows (results1 ++ results2)
+          return $ join chrss
+      chrs <- join <$> replicateConcurrently 100 session
+      length chrs `shouldBe` 10000
+      chrs `shouldSatisfy` all (== (Only 'a'))
 
   describe "Ranges" $
 
