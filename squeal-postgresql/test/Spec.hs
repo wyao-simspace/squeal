@@ -29,6 +29,7 @@ import Control.Concurrent.Async (replicateConcurrently)
 import Data.ByteString (ByteString)
 import Data.Int (Int32)
 import Data.Text (Text)
+import System.Random (randomRIO)
 import Test.Hspec
 
 import qualified Data.ByteString.Char8 as Char8 (unlines)
@@ -131,14 +132,15 @@ spec = before_ setupDB . after_ dropDB $ do
   describe "Pools" $
 
     it "should manage concurrent transactions" $ do
-      pool <- createConnectionPool
-        "host=localhost port=5432 dbname=exampledb user=postgres password=postgres" 1 0.5 10
+      -- pool <- createConnectionPool
+      --   "host=localhost port=5432 dbname=exampledb user=postgres password=postgres" 1 0.5 10
       let
         qry :: Statement (Public '[]) (Only Char) (Only Char)
         qry = query $ values_ (param @1 `as` #fromOnly)
-        session = usingConnectionPool pool $ Unsafe.transactionally_ $ do
+        session = withConnection connectionString $ Unsafe.transactionally_ $ do
           results1 <- executePrepared qry (replicate 50 (Only 'a'))
-          liftIO $ threadDelay 1000000
+          milliseconds <- liftIO $ randomRIO (1000000 `div` 2, 1000000 * 2)
+          liftIO $ threadDelay milliseconds
           results2 <- executePrepared qry (replicate 50 (Only 'a'))
           chrss <- traverse getRows (results1 ++ results2)
           return $ join chrss

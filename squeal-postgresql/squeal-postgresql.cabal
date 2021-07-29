@@ -158,6 +158,7 @@ test-suite spec
     , generics-sop >= 0.5.1.0
     , hspec >= 2.7.1
     , mtl >= 2.2.2
+    , random >= 1.1
     , squeal-postgresql
     , text >= 1.2.3.2
     , vector >= 0.12.1.2
